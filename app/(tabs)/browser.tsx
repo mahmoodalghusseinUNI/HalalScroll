@@ -763,10 +763,8 @@ export default function Browser() {
         const isIG = location.hostname.includes("instagram.com");
         if (!isIG) return;
 
-        const isDM =
-          location.pathname.includes("/direct/") ||
-          document.querySelector('a[href^="/direct/t/"]') ||
-          document.querySelector('[aria-label*="Direct"]');
+        // Only trigger when actually inside a DM thread URL
+        const isDM = location.pathname.includes("/direct/");
 
         const hasReel =
           document.querySelector('video') &&
