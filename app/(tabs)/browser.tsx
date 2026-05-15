@@ -289,18 +289,21 @@ export default function Browser() {
 
           body.halal-instagram-explore-clean {
             background: #000 !important;
-            overflow: hidden !important;
-            touch-action: none !important;
           }
 
-          body.halal-instagram-explore-clean main article,
-          body.halal-instagram-explore-clean main video,
-          body.halal-instagram-explore-clean main img,
-          body.halal-instagram-explore-clean main a[href^="/p/"],
+          /*
+            IMPORTANT:
+            Do NOT hide all of main, all images, or all animated divs.
+            Instagram search needs those internal nodes.
+            We only hide obvious Explore media/reel grid items.
+          */
+
           body.halal-instagram-explore-clean main a[href^="/reel/"],
           body.halal-instagram-explore-clean main a[href^="/reels/"],
+          body.halal-instagram-explore-clean main a[href*="/reel/"],
+          body.halal-instagram-explore-clean main a[href*="/reels/"],
           body.halal-instagram-explore-clean main div[role="button"]:has(video),
-          body.halal-instagram-explore-clean main div[role="button"]:has(img) {
+          body.halal-instagram-explore-clean main video {
             display: none !important;
             visibility: hidden !important;
             opacity: 0 !important;
@@ -309,29 +312,22 @@ export default function Browser() {
             max-height: 0 !important;
             overflow: hidden !important;
           }
+
+          /*
+            Hide the ugly Instagram loading animation visually,
+            but do not remove it from the DOM.
+            Removing it can crash Explore search.
+          */
 
           body.halal-instagram-explore-clean svg[aria-label="Loading..."],
           body.halal-instagram-explore-clean svg[aria-label="Laden..."],
           body.halal-instagram-explore-clean [aria-label="Loading..."],
           body.halal-instagram-explore-clean [aria-label="Laden..."],
-          body.halal-instagram-explore-clean [role="progressbar"],
-          body.halal-instagram-explore-clean div[style*="animation"],
-          body.halal-instagram-explore-clean div[style*="transform: rotate"],
-          body.halal-instagram-explore-clean div[style*="rotate("],
-          body.halal-instagram-explore-clean ._ab8w,
-          body.halal-instagram-explore-clean ._ab8x,
-          body.halal-instagram-explore-clean ._ab8y,
-          body.halal-instagram-explore-clean ._ab8z {
-            display: none !important;
-            visibility: hidden !important;
+          body.halal-instagram-explore-clean [role="progressbar"] {
             opacity: 0 !important;
-            animation: none !important;
+            visibility: hidden !important;
             pointer-events: none !important;
-            height: 0 !important;
-            width: 0 !important;
-            max-height: 0 !important;
-            max-width: 0 !important;
-            overflow: hidden !important;
+            animation: none !important;
           }
 
           body.halal-instagram-explore-clean input,
@@ -339,7 +335,9 @@ export default function Browser() {
           body.halal-instagram-explore-clean input[placeholder],
           body.halal-instagram-explore-clean input[aria-label],
           body.halal-instagram-explore-clean [role="search"],
-          body.halal-instagram-explore-clean form {
+          body.halal-instagram-explore-clean form,
+          body.halal-instagram-explore-clean header,
+          body.halal-instagram-explore-clean nav {
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
@@ -469,6 +467,15 @@ export default function Browser() {
         try {
           el.remove();
         } catch {}
+      }
+
+      function hideElementSoft(el) {
+        if (!el) return;
+
+        el.style.setProperty("visibility", "hidden", "important");
+        el.style.setProperty("opacity", "0", "important");
+        el.style.setProperty("pointer-events", "none", "important");
+        el.style.setProperty("animation", "none", "important");
       }
 
       function looksLikeShortsElement(el) {
@@ -709,27 +716,50 @@ export default function Browser() {
         }
       }
 
-      function removeInstagramExploreLoading() {
+      function hideInstagramExploreLoadingSoftly() {
         const selectors = [
           'svg[aria-label="Loading..."]',
           'svg[aria-label="Laden..."]',
           '[aria-label="Loading..."]',
           '[aria-label="Laden..."]',
-          '[role="progressbar"]',
-          'div[style*="animation"]',
-          'div[style*="transform: rotate"]',
-          'div[style*="rotate("]',
-          '._ab8w',
-          '._ab8x',
-          '._ab8y',
-          '._ab8z'
+          '[role="progressbar"]'
         ];
 
         selectors.forEach((selector) => {
           document.querySelectorAll(selector).forEach((el) => {
-            removeElementHard(el);
+            hideElementSoft(el);
           });
         });
+      }
+
+      function removeInstagramExploreReelsOnly() {
+        const selectors = [
+          'main a[href^="/reel/"]',
+          'main a[href^="/reels/"]',
+          'main a[href*="/reel/"]',
+          'main a[href*="/reels/"]',
+          'main video'
+        ];
+
+        selectors.forEach((selector) => {
+          document.querySelectorAll(selector).forEach((el) => {
+            const container =
+              el.closest('a[href^="/reel/"]') ||
+              el.closest('a[href^="/reels/"]') ||
+              el.closest('a[href*="/reel/"]') ||
+              el.closest('a[href*="/reels/"]') ||
+              el.closest('div[role="button"]') ||
+              el;
+
+            removeElementHard(container);
+          });
+        });
+
+        document
+          .querySelectorAll('a[aria-label="Reels"], svg[aria-label="Reels"], a[href="/reels/"], a[href^="/reels/"]')
+          .forEach((el) => {
+            removeElementHard(el);
+          });
       }
 
       function applyInstagramExploreClean() {
@@ -744,16 +774,8 @@ export default function Browser() {
         if (isExplore) {
           document.body.classList.add("halal-instagram-explore-clean");
 
-          document
-            .querySelectorAll(
-              'main article, main video, main img, main a[href^="/p/"], main a[href^="/reel/"], main a[href^="/reels/"]'
-            )
-            .forEach((el) => {
-              removeElementHard(el);
-            });
-
-          removeInstagramExploreLoading();
-          window.scrollTo(0, 0);
+          removeInstagramExploreReelsOnly();
+          hideInstagramExploreLoadingSoftly();
         } else {
           document.body.classList.remove("halal-instagram-explore-clean");
         }
@@ -763,7 +785,6 @@ export default function Browser() {
         const isIG = location.hostname.includes("instagram.com");
         if (!isIG) return;
 
-        // Only trigger when actually inside a DM thread URL
         const isDM = location.pathname.includes("/direct/");
 
         const hasReel =
@@ -812,7 +833,7 @@ export default function Browser() {
 
       setInterval(() => {
         runAll();
-      }, 200);
+      }, 350);
 
       document.addEventListener(
         "click",
@@ -827,6 +848,14 @@ export default function Browser() {
               e.preventDefault();
               e.stopImmediatePropagation();
               location.replace("https://m.youtube.com/");
+            }
+
+            if (
+              location.hostname.includes("instagram.com") &&
+              href.toLowerCase().includes("/reel")
+            ) {
+              e.preventDefault();
+              e.stopImmediatePropagation();
             }
           }
         },
@@ -849,10 +878,10 @@ export default function Browser() {
             e.stopImmediatePropagation();
           }
 
-          if (document.body.classList.contains("halal-instagram-explore-clean")) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-          }
+          /*
+            Do NOT block touchmove on Instagram Explore.
+            Blocking it breaks search and can trigger "Something went wrong".
+          */
         },
         { passive: false, capture: true }
       );
@@ -873,10 +902,9 @@ export default function Browser() {
             e.stopImmediatePropagation();
           }
 
-          if (document.body.classList.contains("halal-instagram-explore-clean")) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-          }
+          /*
+            Do NOT block wheel on Instagram Explore.
+          */
         },
         { passive: false, capture: true }
       );
@@ -893,8 +921,8 @@ export default function Browser() {
           }
 
           if (document.body.classList.contains("halal-instagram-explore-clean")) {
-            removeInstagramExploreLoading();
-            window.scrollTo(0, 0);
+            hideInstagramExploreLoadingSoftly();
+            removeInstagramExploreReelsOnly();
           }
         },
         { capture: true }

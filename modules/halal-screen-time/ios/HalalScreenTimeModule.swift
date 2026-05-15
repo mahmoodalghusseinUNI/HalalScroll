@@ -11,21 +11,27 @@ public class HalalScreenTimeModule: Module {
     Name("HalalScreenTime")
 
     AsyncFunction("requestAuthorization") { () async throws -> Bool in
-      try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
-      return AuthorizationCenter.shared.authorizationStatus == .approved
+      if #available(iOS 16.0, *) {
+        try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
+        return AuthorizationCenter.shared.authorizationStatus == .approved
+      }
+      return false
     }
 
     Function("getAuthorizationStatus") { () -> String in
-      switch AuthorizationCenter.shared.authorizationStatus {
-      case .notDetermined:
-        return "notDetermined"
-      case .denied:
-        return "denied"
-      case .approved:
-        return "approved"
-      @unknown default:
-        return "unknown"
+      if #available(iOS 16.0, *) {
+        switch AuthorizationCenter.shared.authorizationStatus {
+        case .notDetermined:
+          return "notDetermined"
+        case .denied:
+          return "denied"
+        case .approved:
+          return "approved"
+        @unknown default:
+          return "unknown"
+        }
       }
+      return "unavailable"
     }
 
     Function("hasSelection") { () -> Bool in
@@ -37,44 +43,51 @@ public class HalalScreenTimeModule: Module {
         return false
       }
 
-      let selection = try PropertyListDecoder().decode(
-        FamilyActivitySelection.self,
-        from: data
-      )
-
-      store.shield.applications = selection.applicationTokens
-      store.shield.applicationCategories = .specific(selection.categoryTokens)
-      store.shield.webDomains = selection.webDomainTokens
+      if #available(iOS 16.0, *) {
+        let selection = try PropertyListDecoder().decode(
+          FamilyActivitySelection.self,
+          from: data
+        )
+        store.shield.applications = selection.applicationTokens
+        store.shield.applicationCategories = .specific(selection.categoryTokens)
+        store.shield.webDomains = selection.webDomainTokens
+      }
 
       return true
     }
 
     Function("disableBlocking") { () -> Bool in
-      store.clearAllSettings()
+      if #available(iOS 16.0, *) {
+        store.clearAllSettings()
+      } else {
+        store.shield.applications = []
+        store.shield.applicationCategories = .none
+      }
       return true
     }
 
     Function("showPicker") { () -> Bool in
-      DispatchQueue.main.async {
-        guard let controller = self.appContext?.utilities?.currentViewController() else {
-          return
+      if #available(iOS 16.0, *) {
+        DispatchQueue.main.async {
+          guard let controller = self.appContext?.utilities?.currentViewController() else {
+            return
+          }
+
+          let picker = HalalFamilyPickerView {
+            controller.dismiss(animated: true)
+          }
+
+          let hostingController = UIHostingController(rootView: picker)
+          hostingController.modalPresentationStyle = .formSheet
+          controller.present(hostingController, animated: true)
         }
-
-        let picker = HalalFamilyPickerView {
-          controller.dismiss(animated: true)
-        }
-
-        let hostingController = UIHostingController(rootView: picker)
-        hostingController.modalPresentationStyle = .formSheet
-
-        controller.present(hostingController, animated: true)
       }
-
       return true
     }
   }
 }
 
+@available(iOS 16.0, *)
 struct HalalFamilyPickerView: View {
   @State private var selection = FamilyActivitySelection()
   let onClose: () -> Void

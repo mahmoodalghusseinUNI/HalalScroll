@@ -4,6 +4,7 @@ Pod::Spec.new do |s|
   s.summary        = 'A sample project summary'
   s.description    = 'A sample project description'
   s.author         = ''
+  s.frameworks = 'FamilyControls', 'ManagedSettings'
   s.homepage       = 'https://docs.expo.dev/modules/'
   s.platforms      = {
     :ios => '15.1',
