@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Keyboard,
   Platform,
+  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,12 +15,28 @@ import {
 import { WebView } from "react-native-webview";
 
 export default function Browser() {
-  const { url } = useLocalSearchParams();
+  const { url, appName } = useLocalSearchParams();
   const router = useRouter();
   const webViewRef = useRef<WebView>(null);
 
   const safeUrl = Array.isArray(url) ? url[0] : url;
+  const safeAppName = Array.isArray(appName) ? appName[0] : appName;
   const initialUrl = safeUrl || "https://www.instagram.com";
+
+  const getBrowserTitle = () => {
+    if (safeAppName) return safeAppName;
+
+    const lowerUrl = String(initialUrl).toLowerCase();
+
+    if (lowerUrl.includes("instagram.com")) return "Insta";
+    if (lowerUrl.includes("tiktok.com")) return "TikTok";
+    if (lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be"))
+      return "YouTube";
+
+    return "App";
+  };
+
+  const browserTitle = getBrowserTitle();
 
   const isInitialYouTube =
     typeof initialUrl === "string" &&
@@ -45,6 +62,10 @@ export default function Browser() {
   >(null);
   const [youtubeSearch, setYoutubeSearch] = useState("");
   const [youtubeSuggestions, setYoutubeSuggestions] = useState<string[]>([]);
+  const [showShortsBlockedToast, setShowShortsBlockedToast] = useState(false);
+  const shortsToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === "dark";
@@ -92,6 +113,14 @@ export default function Browser() {
   const youtubeSuggestionTextColor = isDarkMode ? "#ffffff" : "#0f0f0f";
 
   useEffect(() => {
+    return () => {
+      if (shortsToastTimeoutRef.current) {
+        clearTimeout(shortsToastTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const query = youtubeSearch.trim();
 
     if (!isYouTubeHomePage || query.length < 2) {
@@ -137,7 +166,21 @@ export default function Browser() {
     );
   };
 
+  const showShortsBlockedMessage = () => {
+    if (shortsToastTimeoutRef.current) {
+      clearTimeout(shortsToastTimeoutRef.current);
+    }
+
+    setShowShortsBlockedToast(true);
+
+    shortsToastTimeoutRef.current = setTimeout(() => {
+      setShowShortsBlockedToast(false);
+      shortsToastTimeoutRef.current = null;
+    }, 2600);
+  };
+
   const blockYouTubeShorts = () => {
+    showShortsBlockedMessage();
     setIsYouTubePage(true);
     setIsYouTubeHomePage(true);
     setIsYouTubeSwitching(false);
@@ -250,7 +293,6 @@ export default function Browser() {
 
           a[href="/reels/"],
           a[href^="/reels/"],
-          a[href^="/reel/"],
           a[aria-label="Reels"],
           svg[aria-label="Reels"] {
             display: none !important;
@@ -298,6 +340,8 @@ export default function Browser() {
             We only hide obvious Explore media/reel grid items.
           */
 
+          body.halal-instagram-explore-clean main a[href^="/p/"],
+          body.halal-instagram-explore-clean main a[href*="/p/"],
           body.halal-instagram-explore-clean main a[href^="/reel/"],
           body.halal-instagram-explore-clean main a[href^="/reels/"],
           body.halal-instagram-explore-clean main a[href*="/reel/"],
@@ -368,6 +412,30 @@ export default function Browser() {
             z-index: 2147483647 !important;
           }
 
+          #halal-scroll-locked-message {
+            position: fixed !important;
+            left: 50% !important;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 18px) !important;
+            transform: translateX(-50%) !important;
+            z-index: 2147483646 !important;
+            padding: 9px 14px !important;
+            border-radius: 999px !important;
+            background: rgba(0, 0, 0, 0.72) !important;
+            color: #ffffff !important;
+            font-size: 13px !important;
+            font-weight: 800 !important;
+            line-height: 1 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+            pointer-events: none !important;
+            user-select: none !important;
+            white-space: nowrap !important;
+            display: none !important;
+          }
+
+          body.halal-dm-reel-block #halal-scroll-locked-message {
+            display: block !important;
+          }
+
           body.halal-youtube-home-block {
             background: #000 !important;
             overflow: hidden !important;
@@ -429,6 +497,14 @@ export default function Browser() {
           location.pathname === "" ||
           location.pathname === "/index"
         );
+      }
+
+      function notifyShortsBlocked() {
+        try {
+          window.ReactNativeWebView.postMessage(
+            JSON.stringify({ type: "HALAL_SHORTS_BLOCKED" })
+          );
+        } catch {}
       }
 
       function parseDurationToSeconds(text) {
@@ -517,6 +593,7 @@ export default function Browser() {
         const path = location.pathname.toLowerCase();
 
         if (path.startsWith("/shorts")) {
+          notifyShortsBlocked();
           location.replace("https://m.youtube.com/");
           return;
         }
@@ -606,7 +683,8 @@ export default function Browser() {
               isYouTube() &&
               location.pathname.toLowerCase().startsWith("/shorts")
             ) {
-              location.replace("https://m.youtube.com/");
+              notifyShortsBlocked();
+          location.replace("https://m.youtube.com/");
             }
           }, 0);
         };
@@ -619,7 +697,8 @@ export default function Browser() {
               isYouTube() &&
               location.pathname.toLowerCase().startsWith("/shorts")
             ) {
-              location.replace("https://m.youtube.com/");
+              notifyShortsBlocked();
+          location.replace("https://m.youtube.com/");
             }
           }, 0);
         };
@@ -629,8 +708,48 @@ export default function Browser() {
             isYouTube() &&
             location.pathname.toLowerCase().startsWith("/shorts")
           ) {
-            location.replace("https://m.youtube.com/");
+            notifyShortsBlocked();
+          location.replace("https://m.youtube.com/");
           }
+        });
+      }
+
+
+
+      function protectInstagramExploreHistory() {
+        if (window.__halalInstagramExploreHistoryProtected) return;
+        window.__halalInstagramExploreHistoryProtected = true;
+
+        const runSoon = () => {
+          setTimeout(() => {
+            injectCSS();
+            applyInstagramExploreClean();
+            hideInstagramExploreLoadingSoftly();
+            removeInstagramExploreFeedHard();
+          }, 0);
+
+          setTimeout(() => {
+            applyInstagramExploreClean();
+            hideInstagramExploreLoadingSoftly();
+            removeInstagramExploreFeedHard();
+          }, 250);
+        };
+
+        const originalPushState = history.pushState;
+        const originalReplaceState = history.replaceState;
+
+        history.pushState = function() {
+          originalPushState.apply(this, arguments);
+          if (location.hostname.includes("instagram.com")) runSoon();
+        };
+
+        history.replaceState = function() {
+          originalReplaceState.apply(this, arguments);
+          if (location.hostname.includes("instagram.com")) runSoon();
+        };
+
+        window.addEventListener("popstate", () => {
+          if (location.hostname.includes("instagram.com")) runSoon();
         });
       }
 
@@ -732,8 +851,21 @@ export default function Browser() {
         });
       }
 
-      function removeInstagramExploreReelsOnly() {
+      function isInstagramExplorePage() {
+        return (
+          location.hostname.includes("instagram.com") &&
+          (location.pathname === "/explore/" ||
+            location.pathname === "/explore" ||
+            location.pathname.startsWith("/explore/"))
+        );
+      }
+
+      function removeInstagramExploreFeedHard() {
+        if (!isInstagramExplorePage()) return;
+
         const selectors = [
+          'main a[href^="/p/"]',
+          'main a[href*="/p/"]',
           'main a[href^="/reel/"]',
           'main a[href^="/reels/"]',
           'main a[href*="/reel/"]',
@@ -744,11 +876,15 @@ export default function Browser() {
         selectors.forEach((selector) => {
           document.querySelectorAll(selector).forEach((el) => {
             const container =
+              el.closest('article') ||
+              el.closest('a[href^="/p/"]') ||
+              el.closest('a[href*="/p/"]') ||
               el.closest('a[href^="/reel/"]') ||
               el.closest('a[href^="/reels/"]') ||
               el.closest('a[href*="/reel/"]') ||
               el.closest('a[href*="/reels/"]') ||
               el.closest('div[role="button"]') ||
+              el.parentElement ||
               el;
 
             removeElementHard(container);
@@ -766,24 +902,44 @@ export default function Browser() {
         const isIG = location.hostname.includes("instagram.com");
         if (!isIG) return;
 
-        const isExplore =
-          location.pathname === "/explore/" ||
-          location.pathname === "/explore" ||
-          location.pathname.startsWith("/explore/");
+        const isExplore = isInstagramExplorePage();
 
         if (isExplore) {
           document.body.classList.add("halal-instagram-explore-clean");
 
-          removeInstagramExploreReelsOnly();
+          removeInstagramExploreFeedHard();
           hideInstagramExploreLoadingSoftly();
         } else {
           document.body.classList.remove("halal-instagram-explore-clean");
         }
       }
 
+      function ensureScrollLockedMessage() {
+        let message = document.getElementById("halal-scroll-locked-message");
+
+        if (!message) {
+          message = document.createElement("div");
+          message.id = "halal-scroll-locked-message";
+          message.textContent = "🔒 Scrolling is locked";
+          document.body.appendChild(message);
+        }
+      }
+
+      function removeScrollLockedMessage() {
+        const message = document.getElementById("halal-scroll-locked-message");
+
+        if (message) {
+          message.remove();
+        }
+      }
+
       function applyDMBlock() {
         const isIG = location.hostname.includes("instagram.com");
-        if (!isIG) return;
+
+        if (!isIG) {
+          removeScrollLockedMessage();
+          return;
+        }
 
         const isDM = location.pathname.includes("/direct/");
 
@@ -794,24 +950,17 @@ export default function Browser() {
 
         if (isDM && hasReel) {
           document.body.classList.add("halal-dm-reel-block");
-
-          document
-            .querySelectorAll(
-              '[aria-label="Back"], [aria-label="Close"], [aria-label*="Audio"], [aria-label*="audio"], [aria-label*="Sound"], [aria-label*="sound"], button'
-            )
-            .forEach((el) => {
-              el.style.pointerEvents = "auto";
-              el.style.touchAction = "manipulation";
-              el.style.zIndex = "2147483647";
-            });
+          ensureScrollLockedMessage();
         } else {
           document.body.classList.remove("halal-dm-reel-block");
+          removeScrollLockedMessage();
         }
       }
 
       function runAll() {
         injectCSS();
         protectYouTubeHistoryFromShorts();
+        protectInstagramExploreHistory();
         blockYouTubeShortsEverywhere();
         removeYouTubeNativeNav();
         applyDMBlock();
@@ -847,15 +996,25 @@ export default function Browser() {
             if (isYouTube() && href.toLowerCase().includes("/shorts")) {
               e.preventDefault();
               e.stopImmediatePropagation();
-              location.replace("https://m.youtube.com/");
+              notifyShortsBlocked();
+          location.replace("https://m.youtube.com/");
             }
 
-            if (
-              location.hostname.includes("instagram.com") &&
-              href.toLowerCase().includes("/reel")
-            ) {
-              e.preventDefault();
-              e.stopImmediatePropagation();
+            if (location.hostname.includes("instagram.com")) {
+              const lowerHref = href.toLowerCase();
+
+              // Keep the Reels tab hidden/blocked, but allow real reel posts
+              // like /reel/ABC123/ to open from profiles.
+              const isReelsTab =
+                lowerHref === "/reels/" ||
+                lowerHref === "/reels" ||
+                lowerHref.endsWith("instagram.com/reels/") ||
+                lowerHref.endsWith("instagram.com/reels");
+
+              if (isReelsTab) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+              }
             }
           }
         },
@@ -922,7 +1081,7 @@ export default function Browser() {
 
           if (document.body.classList.contains("halal-instagram-explore-clean")) {
             hideInstagramExploreLoadingSoftly();
-            removeInstagramExploreReelsOnly();
+            removeInstagramExploreFeedHard();
           }
         },
         { capture: true }
@@ -1040,313 +1199,390 @@ export default function Browser() {
   };
 
   return (
-    <View style={styles.container}>
-      <WebView
-        ref={webViewRef}
-        source={{ uri: initialUrl }}
-        style={styles.webview}
-        javaScriptEnabled
-        domStorageEnabled
-        onShouldStartLoadWithRequest={(request) => {
-          const targetUrl = request.url || "";
-
-          if (isBlockedYouTubeShortsUrl(targetUrl)) {
-            blockYouTubeShorts();
-            return false;
-          }
-
-          return true;
-        }}
-        injectedJavaScriptBeforeContentLoaded={halalScript}
-        injectedJavaScript={halalScript}
-        onLoadEnd={(event) => {
-          reinjectHalalScript();
-
-          const currentUrl = event.nativeEvent.url || "";
-
-          if (isBlockedYouTubeShortsUrl(currentUrl)) {
-            blockYouTubeShorts();
-            return;
-          }
-
-          if (
-            currentUrl.includes("/feed/library") ||
-            currentUrl.includes("/feed/you")
-          ) {
-            setIsYouTubeSwitching(false);
-            setIsYouTubeHomePage(false);
-            setIsYouTubePage(true);
-            setIsYouTubeWatchPage(false);
-          }
-        }}
-        onNavigationStateChange={(navState) => {
-          const currentUrl = navState.url || "";
-
-          if (isBlockedYouTubeShortsUrl(currentUrl)) {
-            blockYouTubeShorts();
-            return;
-          }
-
-          setCanWebViewGoBack(navState.canGoBack);
-          checkYouTubeState(currentUrl);
-
-          if (
-            currentUrl.includes("youtube.com/results") &&
-            currentUrl.includes("search_query=")
-          ) {
-            setLastYouTubeResultsUrl(currentUrl);
-          }
-
-          if (
-            currentUrl.includes("youtube.com") ||
-            currentUrl.includes("youtu.be") ||
-            currentUrl.includes("instagram.com")
-          ) {
-            reinjectHalalScript();
-          }
-        }}
-        cacheEnabled={true}
-        sharedCookiesEnabled={true}
-        thirdPartyCookiesEnabled={true}
-        allowsInlineMediaPlayback={true}
-      />
-
-      {isYouTubeHomePage && !isYouTubeSwitching && (
-        <View
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: isDarkMode ? "#0f0f0f" : "#ffffff" },
+      ]}
+    >
+      <View
+        style={[
+          styles.browserHeader,
+          {
+            backgroundColor: isDarkMode ? "#0f0f0f" : "#ffffff",
+            borderBottomColor: isDarkMode
+              ? "rgba(255,255,255,0.08)"
+              : "rgba(0,0,0,0.06)",
+          },
+        ]}
+      >
+        <TouchableOpacity
           style={[
-            styles.youtubeHomeOverlay,
-            {
-              backgroundColor: youtubeOverlayBackground,
-              bottom: bottomBarHeight,
-            },
+            isYouTubeWatchPage && lastYouTubeResultsUrl
+              ? styles.headerSearchBackButton
+              : styles.headerBackButton,
+            { backgroundColor: returnButtonBackground },
           ]}
+          activeOpacity={0.8}
+          onPress={
+            isYouTubeWatchPage && lastYouTubeResultsUrl
+              ? goBackInsideWebView
+              : goBackToApp
+          }
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <View style={styles.youtubeSearchWrapper}>
-            <View
-              style={[
-                styles.youtubeSearchBar,
-                {
-                  backgroundColor: youtubeSearchBackground,
-                  borderColor: youtubeSearchBorder,
-                },
-              ]}
+          <Ionicons
+            name={
+              isYouTubeWatchPage && lastYouTubeResultsUrl
+                ? "arrow-back"
+                : "chevron-back"
+            }
+            size={16}
+            color={returnButtonColor}
+          />
+
+          {isYouTubeWatchPage && lastYouTubeResultsUrl && (
+            <Text
+              style={[styles.searchReturnText, { color: returnButtonColor }]}
             >
-              <Ionicons name="search" size={20} color={youtubeSubtitleColor} />
+              Search
+            </Text>
+          )}
+        </TouchableOpacity>
 
-              <TextInput
-                value={youtubeSearch}
-                onChangeText={setYoutubeSearch}
-                onSubmitEditing={() => searchYouTube()}
-                placeholder="Search YouTube"
-                placeholderTextColor={youtubePlaceholderColor}
-                returnKeyType="search"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[
-                  styles.youtubeSearchInput,
-                  { color: youtubeInputColor },
-                ]}
-              />
+        <Text
+          pointerEvents="none"
+          numberOfLines={1}
+          style={[styles.browserHeaderTitle, { color: returnButtonColor }]}
+        >
+          {browserTitle}
+        </Text>
 
-              {youtubeSearch.length > 0 && (
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setYoutubeSearch("");
-                    setYoutubeSuggestions([]);
-                  }}
-                >
-                  <Ionicons
-                    name="close-circle"
-                    size={20}
-                    color={youtubeSubtitleColor}
-                  />
-                </TouchableOpacity>
-              )}
-            </View>
+        <View style={styles.headerRightSpace} />
+      </View>
 
-            {youtubeSuggestions.length > 0 && (
+      <View style={styles.browserBody}>
+        <WebView
+          ref={webViewRef}
+          source={{ uri: initialUrl }}
+          style={styles.webview}
+          javaScriptEnabled
+          domStorageEnabled
+          onShouldStartLoadWithRequest={(request) => {
+            const targetUrl = request.url || "";
+
+            if (isBlockedYouTubeShortsUrl(targetUrl)) {
+              blockYouTubeShorts();
+              return false;
+            }
+
+            return true;
+          }}
+          injectedJavaScriptBeforeContentLoaded={halalScript}
+          injectedJavaScript={halalScript}
+          onLoadEnd={(event) => {
+            reinjectHalalScript();
+
+            const currentUrl = event.nativeEvent.url || "";
+
+            if (isBlockedYouTubeShortsUrl(currentUrl)) {
+              blockYouTubeShorts();
+              return;
+            }
+
+            if (
+              currentUrl.includes("/feed/library") ||
+              currentUrl.includes("/feed/you")
+            ) {
+              setIsYouTubeSwitching(false);
+              setIsYouTubeHomePage(false);
+              setIsYouTubePage(true);
+              setIsYouTubeWatchPage(false);
+            }
+          }}
+          onNavigationStateChange={(navState) => {
+            const currentUrl = navState.url || "";
+
+            if (isBlockedYouTubeShortsUrl(currentUrl)) {
+              blockYouTubeShorts();
+              return;
+            }
+
+            setCanWebViewGoBack(navState.canGoBack);
+            checkYouTubeState(currentUrl);
+
+            if (
+              currentUrl.includes("youtube.com/results") &&
+              currentUrl.includes("search_query=")
+            ) {
+              setLastYouTubeResultsUrl(currentUrl);
+            }
+
+            if (
+              currentUrl.includes("youtube.com") ||
+              currentUrl.includes("youtu.be") ||
+              currentUrl.includes("instagram.com")
+            ) {
+              reinjectHalalScript();
+            }
+          }}
+          onMessage={(event) => {
+            try {
+              const data = JSON.parse(event.nativeEvent.data);
+
+              if (data?.type === "HALAL_SHORTS_BLOCKED") {
+                showShortsBlockedMessage();
+              }
+            } catch {}
+          }}
+          cacheEnabled={true}
+          sharedCookiesEnabled={true}
+          thirdPartyCookiesEnabled={true}
+          allowsInlineMediaPlayback={true}
+        />
+
+        {isYouTubeHomePage && !isYouTubeSwitching && (
+          <View
+            style={[
+              styles.youtubeHomeOverlay,
+              {
+                backgroundColor: youtubeOverlayBackground,
+                bottom: bottomBarHeight,
+              },
+            ]}
+          >
+            <View style={styles.youtubeSearchWrapper}>
               <View
                 style={[
-                  styles.youtubeSuggestionsBox,
+                  styles.youtubeSearchBar,
                   {
-                    backgroundColor: youtubeSuggestionBoxBackground,
-                    borderColor: youtubeSuggestionBorder,
+                    backgroundColor: youtubeSearchBackground,
+                    borderColor: youtubeSearchBorder,
                   },
                 ]}
               >
-                {youtubeSuggestions.map((suggestion) => (
+                <Ionicons
+                  name="search"
+                  size={20}
+                  color={youtubeSubtitleColor}
+                />
+
+                <TextInput
+                  value={youtubeSearch}
+                  onChangeText={setYoutubeSearch}
+                  onSubmitEditing={() => searchYouTube()}
+                  placeholder="Search YouTube"
+                  placeholderTextColor={youtubePlaceholderColor}
+                  returnKeyType="search"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={[
+                    styles.youtubeSearchInput,
+                    { color: youtubeInputColor },
+                  ]}
+                />
+
+                {youtubeSearch.length > 0 && (
                   <TouchableOpacity
-                    key={suggestion}
-                    activeOpacity={0.75}
-                    onPress={() => searchYouTube(suggestion)}
-                    style={styles.youtubeSuggestionItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setYoutubeSearch("");
+                      setYoutubeSuggestions([]);
+                    }}
                   >
                     <Ionicons
-                      name="search-outline"
-                      size={17}
+                      name="close-circle"
+                      size={20}
                       color={youtubeSubtitleColor}
                     />
-
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.youtubeSuggestionText,
-                        { color: youtubeSuggestionTextColor },
-                      ]}
-                    >
-                      {suggestion}
-                    </Text>
                   </TouchableOpacity>
-                ))}
+                )}
               </View>
-            )}
-          </View>
 
-          <View style={styles.youtubeHomeContent}>
+              {youtubeSuggestions.length > 0 && (
+                <View
+                  style={[
+                    styles.youtubeSuggestionsBox,
+                    {
+                      backgroundColor: youtubeSuggestionBoxBackground,
+                      borderColor: youtubeSuggestionBorder,
+                    },
+                  ]}
+                >
+                  {youtubeSuggestions.map((suggestion) => (
+                    <TouchableOpacity
+                      key={suggestion}
+                      activeOpacity={0.75}
+                      onPress={() => searchYouTube(suggestion)}
+                      style={styles.youtubeSuggestionItem}
+                    >
+                      <Ionicons
+                        name="search-outline"
+                        size={17}
+                        color={youtubeSubtitleColor}
+                      />
+
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.youtubeSuggestionText,
+                          { color: youtubeSuggestionTextColor },
+                        ]}
+                      >
+                        {suggestion}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <View style={styles.youtubeHomeContent}>
+              <View
+                style={[
+                  styles.youtubeHomeCard,
+                  {
+                    backgroundColor: youtubeCardBackground,
+                    borderColor: youtubeCardBorder,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.youtubeIconCircle,
+                    { backgroundColor: youtubeIconCircleBackground },
+                  ]}
+                >
+                  <Ionicons name="search" size={34} color={youtubeTitleColor} />
+                </View>
+
+                <Text
+                  style={[
+                    styles.youtubeHomeTitle,
+                    { color: youtubeTitleColor },
+                  ]}
+                >
+                  Try searching for something
+                </Text>
+
+                <Text
+                  style={[
+                    styles.youtubeHomeSubtitle,
+                    { color: youtubeSubtitleColor },
+                  ]}
+                >
+                  No random feed. Search intentionally and choose what you
+                  watch.
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {showShortsBlockedToast && (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.shortsToastWrapper,
+              { bottom: isYouTubePage ? bottomBarHeight + 14 : 18 },
+            ]}
+          >
             <View
               style={[
-                styles.youtubeHomeCard,
+                styles.shortsToast,
                 {
-                  backgroundColor: youtubeCardBackground,
-                  borderColor: youtubeCardBorder,
+                  backgroundColor: isDarkMode
+                    ? "rgba(24,24,24,0.96)"
+                    : "rgba(255,255,255,0.96)",
+                  borderColor: isDarkMode
+                    ? "rgba(255,255,255,0.12)"
+                    : "rgba(0,0,0,0.08)",
                 },
               ]}
             >
-              <View
-                style={[
-                  styles.youtubeIconCircle,
-                  { backgroundColor: youtubeIconCircleBackground },
-                ]}
-              >
-                <Ionicons name="search" size={34} color={youtubeTitleColor} />
-              </View>
+              <Ionicons name="ban" size={16} color={returnButtonColor} />
 
               <Text
-                style={[styles.youtubeHomeTitle, { color: youtubeTitleColor }]}
+                style={[styles.shortsToastText, { color: returnButtonColor }]}
               >
-                Try searching for something
-              </Text>
-
-              <Text
-                style={[
-                  styles.youtubeHomeSubtitle,
-                  { color: youtubeSubtitleColor },
-                ]}
-              >
-                No random feed. Search intentionally and choose what you watch.
+                No Shorts habibi, your attention span is cooked
               </Text>
             </View>
           </View>
-        </View>
-      )}
-
-      {isYouTubeSwitching && (
-        <View
-          pointerEvents="auto"
-          style={[
-            styles.youtubeSwitchBlocker,
-            {
-              backgroundColor: youtubeOverlayBackground,
-              bottom: bottomBarHeight,
-            },
-          ]}
-        />
-      )}
-
-      <TouchableOpacity
-        style={[
-          isYouTubeWatchPage && lastYouTubeResultsUrl
-            ? styles.searchReturnButton
-            : styles.returnButton,
-          {
-            backgroundColor: returnButtonBackground,
-            top: Platform.OS === "android" ? 34 : 54,
-          },
-        ]}
-        activeOpacity={0.8}
-        onPress={
-          isYouTubeWatchPage && lastYouTubeResultsUrl
-            ? goBackInsideWebView
-            : goBackToApp
-        }
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Ionicons
-          name={
-            isYouTubeWatchPage && lastYouTubeResultsUrl
-              ? "arrow-back"
-              : "chevron-back"
-          }
-          size={16}
-          color={returnButtonColor}
-        />
-
-        {isYouTubeWatchPage && lastYouTubeResultsUrl && (
-          <Text style={[styles.searchReturnText, { color: returnButtonColor }]}>
-            Search
-          </Text>
         )}
-      </TouchableOpacity>
 
-      {isYouTubePage && (
-        <View
-          style={[
-            styles.customBottomBar,
-            {
-              backgroundColor: barBackground,
-              borderTopColor: barBorder,
-              height: bottomBarHeight,
-              paddingBottom: Platform.OS === "android" ? 18 : 0,
-            },
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.bottomButton}
-            onPress={goToYouTubeHome}
-            activeOpacity={0.75}
-            hitSlop={{ top: 18, bottom: 18, left: 28, right: 28 }}
+        {isYouTubeSwitching && (
+          <View
+            pointerEvents="auto"
+            style={[
+              styles.youtubeSwitchBlocker,
+              {
+                backgroundColor: youtubeOverlayBackground,
+                bottom: bottomBarHeight,
+              },
+            ]}
+          />
+        )}
+
+        {isYouTubePage && (
+          <View
+            style={[
+              styles.customBottomBar,
+              {
+                backgroundColor: barBackground,
+                borderTopColor: barBorder,
+                height: bottomBarHeight,
+                paddingBottom: Platform.OS === "android" ? 18 : 0,
+              },
+            ]}
           >
-            <Ionicons
-              name="home"
-              size={24}
-              color={isYouTubeHomePage ? activeColor : inactiveColor}
-            />
-
-            <Text
-              style={[
-                styles.bottomText,
-                { color: isYouTubeHomePage ? activeColor : inactiveColor },
-              ]}
+            <TouchableOpacity
+              style={styles.bottomButton}
+              onPress={goToYouTubeHome}
+              activeOpacity={0.75}
+              hitSlop={{ top: 18, bottom: 18, left: 28, right: 28 }}
             >
-              Home
-            </Text>
-          </TouchableOpacity>
+              <Ionicons
+                name="home"
+                size={24}
+                color={isYouTubeHomePage ? activeColor : inactiveColor}
+              />
 
-          <TouchableOpacity
-            style={styles.bottomButton}
-            onPress={goToYouTubeYouPage}
-            activeOpacity={0.75}
-            hitSlop={{ top: 18, bottom: 18, left: 28, right: 28 }}
-          >
-            <Ionicons
-              name="person-circle-outline"
-              size={26}
-              color={!isYouTubeHomePage ? activeColor : inactiveColor}
-            />
+              <Text
+                style={[
+                  styles.bottomText,
+                  { color: isYouTubeHomePage ? activeColor : inactiveColor },
+                ]}
+              >
+                Home
+              </Text>
+            </TouchableOpacity>
 
-            <Text
-              style={[
-                styles.bottomText,
-                { color: !isYouTubeHomePage ? activeColor : inactiveColor },
-              ]}
+            <TouchableOpacity
+              style={styles.bottomButton}
+              onPress={goToYouTubeYouPage}
+              activeOpacity={0.75}
+              hitSlop={{ top: 18, bottom: 18, left: 28, right: 28 }}
             >
-              You
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
+              <Ionicons
+                name="person-circle-outline"
+                size={26}
+                color={!isYouTubeHomePage ? activeColor : inactiveColor}
+              />
+
+              <Text
+                style={[
+                  styles.bottomText,
+                  { color: !isYouTubeHomePage ? activeColor : inactiveColor },
+                ]}
+              >
+                You
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -1361,6 +1597,65 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
   },
 
+  browserHeader: {
+    height: 48,
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    zIndex: 10000,
+    elevation: 10000,
+  },
+
+  browserBody: {
+    flex: 1,
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
+
+  headerBackButton: {
+    position: "absolute",
+    left: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 2,
+    elevation: 2,
+  },
+
+  headerSearchBackButton: {
+    position: "absolute",
+    left: 8,
+    height: 34,
+    borderRadius: 17,
+    paddingLeft: 9,
+    paddingRight: 11,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 4,
+    zIndex: 2,
+    elevation: 2,
+  },
+
+  browserHeaderTitle: {
+    maxWidth: "60%",
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  headerRightSpace: {
+    position: "absolute",
+    right: 8,
+    width: 34,
+    height: 34,
+  },
+
   youtubeHomeOverlay: {
     position: "absolute",
     top: 0,
@@ -1368,6 +1663,38 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 9000,
     elevation: 9000,
+  },
+
+  shortsToastWrapper: {
+    position: "absolute",
+    left: 14,
+    right: 14,
+    alignItems: "center",
+    zIndex: 11000,
+    elevation: 11000,
+  },
+
+  shortsToast: {
+    maxWidth: 315,
+    minHeight: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+
+  shortsToastText: {
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
   },
 
   youtubeSwitchBlocker: {
@@ -1499,6 +1826,23 @@ const styles = StyleSheet.create({
   searchReturnText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+
+  browserTopTitleBox: {
+    position: "absolute",
+    left: 60,
+    right: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10000,
+    elevation: 10000,
+  },
+
+  browserTopTitle: {
+    color: "#111111",
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center",
   },
 
   customBottomBar: {

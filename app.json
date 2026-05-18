@@ -32,7 +32,6 @@
     },
     "plugins": [
       "expo-router",
-      "./plugins/withHalalScreenTime",
       [
         "expo-splash-screen",
         {
@@ -44,7 +43,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
